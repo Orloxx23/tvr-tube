@@ -99,7 +99,7 @@ async function runYtDlp(
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
         reject(
           new YtDlpError(
-            "No se encontró el binario yt-dlp. Instalalo (choco install yt-dlp) o configurá YT_DLP_PATH.",
+            "No se encontró el binario yt-dlp en el servidor. Instalalo o configurá YT_DLP_PATH en el .env apuntando al ejecutable.",
             "binary_missing",
             err.message
           )

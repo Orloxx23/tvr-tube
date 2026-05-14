@@ -1,0 +1,25 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: tvr-tube:latest
+    container_name: tvr-tube
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: 0.0.0.0
+    # Temp dir donde yt-dlp escribe antes de subir a R2.
+    # Lo dejamos como tmpfs in-memory para que sea rápido y se borre solo.
+    tmpfs:
+      - /tmp:exec,size=2g
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
