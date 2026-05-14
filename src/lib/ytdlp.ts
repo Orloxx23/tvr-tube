@@ -34,6 +34,52 @@ function getFfmpegLocation(): string | undefined {
   return env.FFMPEG_PATH || undefined;
 }
 
+function getCommonArgs(): string[] {
+  const args: string[] = [];
+  if (env.YT_DLP_COOKIES_PATH) {
+    args.push("--cookies", env.YT_DLP_COOKIES_PATH);
+  }
+  if (env.YT_DLP_EXTRACTOR_ARGS) {
+    args.push("--extractor-args", env.YT_DLP_EXTRACTOR_ARGS);
+  }
+  return args;
+}
+
+function classifyError(stderr: string): { code: string; message: string } {
+  if (/Sign in to confirm|confirm you.?re not a bot/i.test(stderr)) {
+    return {
+      code: "youtube_bot_check",
+      message:
+        "YouTube exige autenticación desde esta IP (típico en VPS). Subí un cookies.txt al servidor y configurá YT_DLP_COOKIES_PATH apuntando al archivo.",
+    };
+  }
+  if (/Private video/i.test(stderr)) {
+    return { code: "private", message: "Este video es privado." };
+  }
+  if (/Video unavailable/i.test(stderr)) {
+    return {
+      code: "unavailable",
+      message: "El video no está disponible, fue eliminado o tiene restricción regional.",
+    };
+  }
+  if (/age.?restricted|inappropriate for some users/i.test(stderr)) {
+    return {
+      code: "age_restricted",
+      message: "Video con restricción de edad — requiere cookies de una cuenta verificada.",
+    };
+  }
+  if (/HTTP Error 429|Too Many Requests/i.test(stderr)) {
+    return {
+      code: "youtube_rate_limit",
+      message: "YouTube rate-limiteó esta IP. Esperá unos minutos o configurá un proxy.",
+    };
+  }
+  return {
+    code: "non_zero_exit",
+    message: `yt-dlp terminó con error: ${extractLastErrorLine(stderr)}`,
+  };
+}
+
 interface RunOptions {
   signal?: AbortSignal;
   onLine?: (line: string) => void;
@@ -59,9 +105,11 @@ async function runYtDlp(
   return new Promise((resolve, reject) => {
     const bin = getYtDlpBinary();
     const ffmpegLocation = getFfmpegLocation();
-    const fullArgs = ffmpegLocation
-      ? ["--ffmpeg-location", ffmpegLocation, ...args]
-      : args;
+    const fullArgs = [
+      ...(ffmpegLocation ? ["--ffmpeg-location", ffmpegLocation] : []),
+      ...getCommonArgs(),
+      ...args,
+    ];
     const signal = options?.signal;
 
     const child = spawn(bin, fullArgs, {
@@ -122,14 +170,8 @@ async function runYtDlp(
       } else if (signal?.aborted) {
         reject(new YtDlpError("Descarga cancelada.", "aborted", stderr));
       } else {
-        const lastErr = extractLastErrorLine(stderr);
-        reject(
-          new YtDlpError(
-            `yt-dlp terminó con código ${code}: ${lastErr}`,
-            "non_zero_exit",
-            stderr
-          )
-        );
+        const { code: errCode, message } = classifyError(stderr);
+        reject(new YtDlpError(message, errCode, stderr));
       }
     });
   });
