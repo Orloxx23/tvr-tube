@@ -13,6 +13,19 @@ if [ -n "$YT_DLP_COOKIES_PATH" ]; then
            && chown nextjs:nodejs "$dest" \
            && chmod 600 "$dest"; then
             export YT_DLP_COOKIES_PATH="$dest"
+            size=$(stat -c%s "$dest" 2>/dev/null || echo "?")
+            first_line=$(head -n 1 "$dest" 2>/dev/null || echo "")
+            yt_count=$(grep -c -E "\.?youtube\.com" "$dest" 2>/dev/null || echo 0)
+            echo "[entrypoint] Cookies size=${size}B, first_line='${first_line}', youtube_entries=${yt_count}"
+            if [ "$size" -lt 100 ] 2>/dev/null; then
+                echo "[entrypoint] AVISO: el archivo de cookies parece vacío o muy chico." >&2
+            fi
+            if ! echo "$first_line" | grep -q "Netscape HTTP Cookie File"; then
+                echo "[entrypoint] AVISO: la primera línea no es '# Netscape HTTP Cookie File' — yt-dlp requiere formato Netscape, no JSON." >&2
+            fi
+            if [ "$yt_count" = "0" ]; then
+                echo "[entrypoint] AVISO: no se encontraron entradas de youtube.com en las cookies." >&2
+            fi
         else
             echo "[entrypoint] AVISO: no se pudo preparar la copia de cookies; continuando sin cookies." >&2
             unset YT_DLP_COOKIES_PATH
