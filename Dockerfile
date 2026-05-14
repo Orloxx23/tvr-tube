@@ -29,12 +29,14 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
-# Install ffmpeg, python3 (yt-dlp es un script Python), y el último yt-dlp.
+# Install ffmpeg, python3 (yt-dlp es un script Python), gosu (drop privileges
+# desde el entrypoint), y el último yt-dlp.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
       ca-certificates \
       curl \
       ffmpeg \
+      gosu \
       python3 && \
     curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp \
       -o /usr/local/bin/yt-dlp && \
@@ -53,10 +55,15 @@ COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
-USER nextjs
+# Entrypoint que arregla permisos de mounts externos (cookies) y luego baja
+# privilegios al user `nextjs` antes de ejecutar el CMD.
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod 755 /entrypoint.sh
+
 EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD node -e "fetch('http://localhost:'+(process.env.PORT||3000)+'/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["node", "server.js"]
