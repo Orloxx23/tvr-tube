@@ -2,11 +2,12 @@ import { SiteHeader } from "@/components/features/site-header";
 import { SiteFooter } from "@/components/features/site-footer";
 import { Downloader } from "@/components/features/downloader";
 import { DownloadHistoryPanel } from "@/components/features/download-history";
+import { BinariesGate } from "@/components/features/binaries-gate";
 import { Badge } from "@/components/ui/badge";
 
 export default function HomePage() {
   return (
-    <>
+    <BinariesGate>
       <SiteHeader />
       <main className="relative overflow-x-hidden">
         <div className="glow-orb" aria-hidden="true" />
@@ -43,6 +44,6 @@ export default function HomePage() {
         </section>
       </main>
       <SiteFooter />
-    </>
+    </BinariesGate>
   );
 }

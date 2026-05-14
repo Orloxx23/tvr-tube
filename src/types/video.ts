@@ -31,9 +31,10 @@ export interface DownloadHistoryEntry {
   thumbnailUrl: string;
   options: DownloadOptions;
   createdAt: number;
-  downloadUrl?: string;
-  expiresAt?: number;
-  status: "pending" | "processing" | "ready" | "failed" | "expired";
+  filePath?: string;
+  fileName?: string;
+  sizeBytes?: number;
+  status: "pending" | "processing" | "ready" | "failed";
   errorMessage?: string;
 }
 
@@ -43,7 +44,7 @@ export type DownloadJobPhase =
   | "downloading-video"
   | "downloading-audio"
   | "merging"
-  | "uploading"
+  | "saving"
   | "completed"
   | "failed";
 

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Download } from "lucide-react";
-import { ThemeToggle } from "./theme-toggle";
+import { SettingsTrigger } from "./settings-trigger";
 
 export function SiteHeader() {
   return (
@@ -32,7 +32,7 @@ export function SiteHeader() {
           >
             Privacidad
           </Link>
-          <ThemeToggle />
+          <SettingsTrigger />
         </nav>
       </div>
     </header>

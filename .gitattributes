@@ -1,3 +1,0 @@
-# Forzar LF en scripts shell para que funcionen en Linux después de checkout en Windows.
-*.sh text eol=lf
-entrypoint.sh text eol=lf

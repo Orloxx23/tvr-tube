@@ -8,6 +8,7 @@ import {
   ArrowRight,
   CheckCircle2,
   Download,
+  FolderOpen,
   Link2,
   Loader2,
   RotateCcw,
@@ -58,43 +59,30 @@ type ProgressPhase =
   | "downloading-video"
   | "downloading-audio"
   | "merging"
-  | "uploading";
+  | "saving";
 
 const PHASE_LABEL: Record<ProgressPhase, string> = {
   probing: "Analizando video",
   "downloading-video": "Descargando video",
   "downloading-audio": "Descargando audio",
   merging: "Combinando video y audio",
-  uploading: "Subiendo al almacenamiento",
+  saving: "Guardando archivo",
 };
 
 const INDETERMINATE_PHASES: ReadonlySet<ProgressPhase> = new Set([
   "probing",
   "merging",
+  "saving",
 ]);
-
-type StreamEvent =
-  | { type: "phase"; phase: ProgressPhase }
-  | { type: "progress"; phase: ProgressPhase; percent: number }
-  | {
-      type: "completed";
-      downloadUrl: string;
-      fileName: string;
-      sizeBytes: number;
-      expiresAt: number;
-      contentType: string;
-    }
-  | { type: "failed"; message: string; code: string };
 
 type DownloadState =
   | { status: "idle" }
   | { status: "running"; phase: ProgressPhase; percent: number }
   | {
       status: "success";
-      downloadUrl: string;
+      filePath: string;
       fileName: string;
       sizeBytes: number;
-      expiresAt: number;
     }
   | { status: "failed"; message: string };
 
@@ -108,14 +96,9 @@ type DownloadPayload =
       title?: string;
     };
 
-function triggerBrowserDownload(url: string, fileName: string) {
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = fileName;
-  a.rel = "noopener";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+function getTvrApi() {
+  if (typeof window === "undefined" || !window.tvr) return null;
+  return window.tvr;
 }
 
 export function Downloader() {
@@ -142,28 +125,22 @@ export function Downloader() {
   const fetchMetadata = useCallback(async (url: string) => {
     setState({ status: "loading" });
     setDownload({ status: "idle" });
-    try {
-      const res = await fetch(`/api/metadata?url=${encodeURIComponent(url)}`, {
-        cache: "no-store",
-      });
-      const payload = (await res.json().catch(() => null)) as
-        | { metadata?: VideoMetadata; error?: { message: string } }
-        | null;
-      if (!res.ok || !payload?.metadata) {
-        const message =
-          payload?.error?.message ?? "No se pudo obtener la información del video.";
-        setState({ status: "error", message });
-        return;
-      }
-      setState({ status: "ready", metadata: payload.metadata });
-    } catch (err) {
+    const api = getTvrApi();
+    if (!api) {
       setState({
         status: "error",
         message:
-          err instanceof Error
-            ? `Error de red: ${err.message}`
-            : "Error de red desconocido.",
+          "Esta app necesita correr dentro de Electron (no hay bridge IPC disponible).",
       });
+      return;
+    }
+    try {
+      const metadata = await api.getMetadata(url);
+      setState({ status: "ready", metadata });
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "No se pudo obtener la información del video.";
+      setState({ status: "error", message });
     }
   }, []);
 
@@ -197,6 +174,11 @@ export function Downloader() {
 
   const onDownload = useCallback(async () => {
     if (state.status !== "ready") return;
+    const api = getTvrApi();
+    if (!api) {
+      toast.error("Bridge IPC no disponible.");
+      return;
+    }
     const m = state.metadata;
     const effectiveQuality =
       m.availableQualities && !m.availableQualities.includes(quality)
@@ -236,96 +218,37 @@ export function Downloader() {
             title: m.title,
           };
 
-    try {
-      const res = await fetch("/api/download", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+    const unsubscribe = api.onDownloadProgress((evt) => {
+      setDownload({
+        status: "running",
+        phase: evt.phase,
+        percent: evt.percent ?? 0,
       });
+    });
 
-      if (!res.ok || !res.body) {
-        const errPayload = (await res.json().catch(() => null)) as
-          | { error?: { message?: string } }
-          | null;
-        const message =
-          errPayload?.error?.message ?? `Error HTTP ${res.status}.`;
-        update(historyId, { status: "failed", errorMessage: message });
-        setDownload({ status: "failed", message });
-        toast.error("Error en la descarga", { description: message });
-        return;
-      }
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let final:
-        | Extract<StreamEvent, { type: "completed" }>
-        | Extract<StreamEvent, { type: "failed" }>
-        | null = null;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        let sep: number;
-        while ((sep = buffer.indexOf("\n\n")) >= 0) {
-          const chunk = buffer.slice(0, sep);
-          buffer = buffer.slice(sep + 2);
-          const dataLine = chunk
-            .split("\n")
-            .find((l) => l.startsWith("data: "));
-          if (!dataLine) continue;
-          let event: StreamEvent;
-          try {
-            event = JSON.parse(dataLine.slice(6)) as StreamEvent;
-          } catch {
-            continue;
-          }
-          if (event.type === "phase") {
-            setDownload({ status: "running", phase: event.phase, percent: 0 });
-          } else if (event.type === "progress") {
-            setDownload({
-              status: "running",
-              phase: event.phase,
-              percent: event.percent,
-            });
-          } else if (event.type === "completed" || event.type === "failed") {
-            final = event;
-          }
-        }
-      }
-
-      if (!final || final.type === "failed") {
-        const message =
-          final?.type === "failed"
-            ? final.message
-            : "La conexión se cerró antes de completar la descarga.";
-        update(historyId, { status: "failed", errorMessage: message });
-        setDownload({ status: "failed", message });
-        toast.error("Error en la descarga", { description: message });
-        return;
-      }
-
+    try {
+      const result = await api.startDownload(payload);
       update(historyId, {
         status: "ready",
-        downloadUrl: final.downloadUrl,
-        expiresAt: final.expiresAt,
+        filePath: result.filePath,
+        fileName: result.fileName,
+        sizeBytes: result.sizeBytes,
       });
       setDownload({
         status: "success",
-        downloadUrl: final.downloadUrl,
-        fileName: final.fileName,
-        sizeBytes: final.sizeBytes,
-        expiresAt: final.expiresAt,
+        filePath: result.filePath,
+        fileName: result.fileName,
+        sizeBytes: result.sizeBytes,
       });
-      triggerBrowserDownload(final.downloadUrl, final.fileName);
-      toast.success("Descarga lista", { description: final.fileName });
+      toast.success("Descarga lista", { description: result.fileName });
     } catch (err) {
       const message =
-        err instanceof Error ? `Error de red: ${err.message}` : "Error de red.";
+        err instanceof Error ? err.message : "Error desconocido en la descarga.";
       update(historyId, { status: "failed", errorMessage: message });
       setDownload({ status: "failed", message });
       toast.error("Error en la descarga", { description: message });
+    } finally {
+      unsubscribe();
     }
   }, [add, audioBitrate, audioFormat, mode, quality, state, update]);
 
@@ -489,8 +412,7 @@ export function Downloader() {
                   <DownloadSuccessPanel
                     fileName={download.fileName}
                     sizeBytes={download.sizeBytes}
-                    expiresAt={download.expiresAt}
-                    downloadUrl={download.downloadUrl}
+                    filePath={download.filePath}
                   />
                 ) : download.status === "failed" ? (
                   <DownloadErrorPanel
@@ -550,18 +472,15 @@ export function Downloader() {
 function DownloadSuccessPanel({
   fileName,
   sizeBytes,
-  expiresAt,
-  downloadUrl,
+  filePath,
 }: {
   fileName: string;
   sizeBytes: number;
-  expiresAt: number;
-  downloadUrl: string;
+  filePath: string;
 }) {
-  const expiresAtLabel = new Date(expiresAt).toLocaleTimeString("es-AR", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const onReveal = () => {
+    void window.tvr?.revealInFolder(filePath);
+  };
   return (
     <div className="flex items-start gap-3 rounded-xl border border-success/30 bg-success/6 p-4">
       <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-success/15">
@@ -570,15 +489,18 @@ function DownloadSuccessPanel({
       <div className="min-w-0 flex-1 space-y-1">
         <p className="truncate text-sm font-medium text-foreground">{fileName}</p>
         <p className="text-xs text-muted-foreground">
-          {formatBytes(sizeBytes)} · enlace válido hasta {expiresAtLabel}
+          {formatBytes(sizeBytes)} · guardado en tu equipo
         </p>
-        <a
-          href={downloadUrl}
-          className="inline-flex text-xs font-medium text-foreground underline decoration-foreground/30 underline-offset-4 hover:decoration-foreground"
-          rel="noopener"
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={onReveal}
+          className="-ml-2 mt-1 h-7 px-2 text-xs"
         >
-          Abrir enlace directo
-        </a>
+          <FolderOpen className="h-3 w-3" aria-hidden="true" />
+          Mostrar en carpeta
+        </Button>
       </div>
     </div>
   );

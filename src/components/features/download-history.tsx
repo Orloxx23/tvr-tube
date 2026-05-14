@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { AnimatePresence, motion } from "framer-motion";
-import { Clock, Download, Music2, Trash2, Video, X } from "lucide-react";
+import { Clock, FolderOpen, Music2, Trash2, Video, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useDownloadHistory } from "@/hooks/use-download-history";
@@ -19,8 +19,6 @@ function StatusBadge({ status }: { status: DownloadHistoryEntry["status"] }) {
       return <Badge variant="default">En cola</Badge>;
     case "failed":
       return <Badge variant="destructive">Fallida</Badge>;
-    case "expired":
-      return <Badge variant="warning">Expirada</Badge>;
   }
 }
 
@@ -100,17 +98,15 @@ export function DownloadHistoryPanel() {
                 </div>
               </div>
               <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-                {entry.downloadUrl && entry.status === "ready" ? (
+                {entry.filePath && entry.status === "ready" ? (
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
-                    asChild
-                    aria-label="Descargar archivo"
+                    onClick={() => window.tvr?.revealInFolder(entry.filePath!)}
+                    aria-label="Mostrar en carpeta"
                   >
-                    <a href={entry.downloadUrl} download>
-                      <Download className="h-4 w-4" aria-hidden="true" />
-                    </a>
+                    <FolderOpen className="h-4 w-4" aria-hidden="true" />
                   </Button>
                 ) : null}
                 <Button
