@@ -24,6 +24,7 @@ import {
   initUpdater,
   quitAndInstall,
 } from "./updater";
+import { installThumbnailRefererFix } from "./network";
 
 const isDev = !app.isPackaged;
 
@@ -181,6 +182,7 @@ async function createWindow(): Promise<void> {
 
 app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
+  installThumbnailRefererFix();
   registerIpcHandlers();
   onSettingsChange(broadcastSettings);
   await getSettings();
