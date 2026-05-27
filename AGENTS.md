@@ -6,11 +6,20 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ## Auto-actualización (electron-updater)
 
-La app usa `electron-updater` con GitHub Releases. El flujo:
+La app usa `electron-updater` con GitHub Releases. La app empaquetada chequea actualizaciones al iniciar (4 s después del arranque) y muestra el `UpdateNotifier` (banner abajo a la derecha). Descarga en segundo plano y pide al usuario reiniciar para instalar. En `dev` los chequeos están deshabilitados.
 
-1. Subí la versión en `package.json` (`version`).
-2. Exportá un token con permisos `repo`: `setx GH_TOKEN <token>` (o `$env:GH_TOKEN="..."` para la sesión).
-3. Ejecutá `npm run release` (o `release:win`/`release:mac`/`release:linux`). Esto buildea Next + Electron, empaqueta y sube los artefactos + `latest.yml` a un release nuevo en `Orloxx23/tvr-tube`.
-4. Publicá el release en GitHub (de borrador a publicado) para que los clientes lo detecten.
+### Publicar un release (automático, recomendado)
 
-La app empaquetada chequea actualizaciones al iniciar (4 s después del arranque) y muestra el `UpdateNotifier` (banner abajo a la derecha). Descarga en segundo plano y pide al usuario reiniciar para instalar. En `dev` los chequeos están deshabilitados.
+CI corre `.github/workflows/release.yml` y buildea Windows/macOS/Linux en paralelo cuando aparece un tag `v*`.
+
+1. Subí la `version` en `package.json` y commiteala.
+2. `rtk git tag v0.1.2 && rtk git push origin v0.1.2`
+3. Esperá que termine el workflow en Actions; va a crear un release como borrador con los instaladores y `latest*.yml`.
+4. Editá el release en GitHub y marcalo como publicado para que los clientes lo detecten.
+
+### Publicar un release (manual / local)
+
+1. Subí la `version` en `package.json`.
+2. `$env:GH_TOKEN = "<PAT con scope repo o fine-grained Contents:RW>"`
+3. `npm run release:win` (o `release:mac` / `release:linux`).
+4. Publicá el release en GitHub (borrador → publicado).
