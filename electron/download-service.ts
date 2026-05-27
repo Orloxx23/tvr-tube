@@ -9,7 +9,7 @@ import type {
   YtDlpProgressEvent,
   YtDlpRunner,
 } from "./ytdlp";
-import { canonicalUrl, extractVideoId } from "./metadata";
+import { normalizeUrl } from "./platforms";
 
 export type DownloadPayload =
   | { mode: "video"; url: string; quality: VideoQuality; title?: string }
@@ -90,13 +90,12 @@ export class DownloadService {
   }
 
   async run(jobId: string, payload: DownloadPayload): Promise<DownloadResult> {
-    const videoId = extractVideoId(payload.url);
-    if (!videoId) {
-      throw new Error("La URL no parece un video válido de YouTube.");
+    const sourceUrl = normalizeUrl(payload.url);
+    if (!sourceUrl) {
+      throw new Error("La URL no es válida.");
     }
-    const watchUrl = canonicalUrl(videoId);
-    const slug = sanitizeForFilename(payload.title ?? videoId);
-    const outputBase = `${videoId}-${randomUUID().slice(0, 8)}`;
+    const slug = sanitizeForFilename(payload.title ?? "video");
+    const outputBase = `dl-${randomUUID().slice(0, 12)}`;
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "tvrtube-"));
 
     const controller = new AbortController();
@@ -114,7 +113,7 @@ export class DownloadService {
       const produced =
         payload.mode === "video"
           ? await this.runner.downloadVideo({
-              url: watchUrl,
+              url: sourceUrl,
               outputDir: tempDir,
               outputBase,
               quality: payload.quality,
@@ -122,7 +121,7 @@ export class DownloadService {
               onProgress: ytdlpProgress,
             })
           : await this.runner.downloadAudio({
-              url: watchUrl,
+              url: sourceUrl,
               outputDir: tempDir,
               outputBase,
               format: payload.audioFormat,

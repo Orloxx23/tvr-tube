@@ -85,10 +85,17 @@ function classifyError(stderr: string): { code: string; message: string } {
         "YouTube exige autenticación desde esta IP. Configurá un cookies.txt en Ajustes.",
     };
   }
-  if (/Private video/i.test(stderr)) {
+  if (/login required|requires (?:a )?login|empty media response|Restricted Video/i.test(stderr)) {
+    return {
+      code: "login_required",
+      message:
+        "El contenido requiere iniciar sesión. Exportá las cookies de tu navegador (cookies.txt) y configuralas en Ajustes.",
+    };
+  }
+  if (/Private video|This video is private/i.test(stderr)) {
     return { code: "private", message: "Este video es privado." };
   }
-  if (/Video unavailable/i.test(stderr)) {
+  if (/Video unavailable|This video has been removed/i.test(stderr)) {
     return {
       code: "unavailable",
       message: "El video no está disponible, fue eliminado o tiene restricción regional.",
@@ -100,10 +107,23 @@ function classifyError(stderr: string): { code: string; message: string } {
       message: "Video con restricción de edad — requiere cookies de una cuenta verificada.",
     };
   }
-  if (/HTTP Error 429|Too Many Requests/i.test(stderr)) {
+  if (/HTTP Error 429|Too Many Requests|rate.?limit/i.test(stderr)) {
     return {
-      code: "youtube_rate_limit",
-      message: "YouTube rate-limiteó esta IP. Esperá unos minutos.",
+      code: "rate_limit",
+      message: "El sitio limitó las descargas desde esta IP. Esperá unos minutos.",
+    };
+  }
+  if (/Unsupported URL|ERROR: Unsupported/i.test(stderr)) {
+    return {
+      code: "unsupported_url",
+      message: "Esta URL no es soportada por yt-dlp.",
+    };
+  }
+  if (/No video formats found|Requested format is not available/i.test(stderr)) {
+    return {
+      code: "no_formats",
+      message:
+        "No se encontró un formato descargable. El contenido puede ser sólo imagen o estar protegido.",
     };
   }
   return {
@@ -309,9 +329,19 @@ export function createYtDlp(config: YtDlpConfig) {
   }: DownloadVideoInput): Promise<{ filePath: string; ext: string }> {
     const height = QUALITY_TO_HEIGHT[quality];
     const outputTemplate = path.join(outputDir, `${outputBase}.%(ext)s`);
+    // Selector con fallback: primero intenta separar video+audio (YouTube/Vimeo),
+    // luego usa el mejor archivo único (TikTok/IG/Pinterest sirven MP4 ya mergeado),
+    // y finalmente afloja la restricción de altura por si no hay nada que la cumpla.
+    const formatSelector = [
+      `bestvideo[height<=${height}][ext=mp4]+bestaudio[ext=m4a]`,
+      `bestvideo[height<=${height}]+bestaudio`,
+      `best[height<=${height}][ext=mp4]`,
+      `best[height<=${height}]`,
+      "best",
+    ].join("/");
     const args = [
       "-f",
-      `bestvideo[height<=${height}][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=${height}]+bestaudio/best[height<=${height}]`,
+      formatSelector,
       "--merge-output-format",
       "mp4",
       "--no-playlist",
@@ -338,9 +368,15 @@ export function createYtDlp(config: YtDlpConfig) {
     onProgress,
   }: DownloadAudioInput): Promise<{ filePath: string; ext: string }> {
     const outputTemplate = path.join(outputDir, `${outputBase}.%(ext)s`);
+    // Fallback a `best` para plataformas que no exponen un stream de audio separado
+    // (TikTok, IG, Pinterest); con `-x` yt-dlp extrae el audio del MP4 mergeado.
+    const formatSelector =
+      format === "m4a"
+        ? "bestaudio[ext=m4a]/bestaudio/best"
+        : "bestaudio/best";
     const args = [
       "-f",
-      format === "m4a" ? "bestaudio[ext=m4a]/bestaudio" : "bestaudio",
+      formatSelector,
       "-x",
       "--audio-format",
       format,
@@ -364,6 +400,14 @@ export function createYtDlp(config: YtDlpConfig) {
     url: string,
     signal?: AbortSignal
   ): Promise<VideoQuality[] | null> {
+    const info = await fetchInfo(url, signal);
+    return info?.availableQualities ?? null;
+  }
+
+  async function fetchInfo(
+    url: string,
+    signal?: AbortSignal
+  ): Promise<YtDlpInfo | null> {
     let stdout: string;
     try {
       const result = await runYtDlp(
@@ -374,13 +418,21 @@ export function createYtDlp(config: YtDlpConfig) {
     } catch {
       return null;
     }
-    let parsed: { formats?: unknown };
+    let parsed: YtDlpRawInfo;
     try {
-      parsed = JSON.parse(stdout);
+      parsed = JSON.parse(stdout) as YtDlpRawInfo;
     } catch {
       return null;
     }
-    const formats = Array.isArray(parsed.formats) ? parsed.formats : [];
+
+    // Algunas plataformas devuelven una "playlist" con un solo entry para posts
+    // que contienen un único video (IG carruseles, Threads, Pinterest, etc.).
+    const entry: YtDlpRawInfo =
+      Array.isArray(parsed.entries) && parsed.entries.length > 0
+        ? (parsed.entries[0] as YtDlpRawInfo)
+        : parsed;
+
+    const formats = Array.isArray(entry.formats) ? entry.formats : [];
     const buckets = new Set<VideoQuality>();
     for (const fmt of formats as YtDlpFormat[]) {
       if (!fmt || typeof fmt.height !== "number") continue;
@@ -388,11 +440,89 @@ export function createYtDlp(config: YtDlpConfig) {
       const bucket = heightToQuality(fmt.height);
       if (bucket) buckets.add(bucket);
     }
-    if (buckets.size === 0) return null;
-    return QUALITY_ORDER.filter((q) => buckets.has(q));
+    const availableQualities =
+      buckets.size > 0 ? QUALITY_ORDER.filter((q) => buckets.has(q)) : null;
+
+    return {
+      id: typeof entry.id === "string" ? entry.id : null,
+      title: pickTitle(entry),
+      uploader: pickUploader(entry),
+      uploaderUrl: typeof entry.uploader_url === "string" ? entry.uploader_url : null,
+      thumbnail: pickThumbnail(entry),
+      webpageUrl:
+        typeof entry.webpage_url === "string" ? entry.webpage_url : null,
+      durationSeconds: typeof entry.duration === "number" ? entry.duration : null,
+      availableQualities,
+    };
   }
 
-  return { downloadVideo, downloadAudio, probeAvailableQualities };
+  return { downloadVideo, downloadAudio, probeAvailableQualities, fetchInfo };
+}
+
+interface YtDlpRawInfo {
+  id?: unknown;
+  title?: unknown;
+  fulltitle?: unknown;
+  description?: unknown;
+  uploader?: unknown;
+  uploader_id?: unknown;
+  uploader_url?: unknown;
+  channel?: unknown;
+  creator?: unknown;
+  thumbnail?: unknown;
+  thumbnails?: unknown;
+  webpage_url?: unknown;
+  duration?: unknown;
+  formats?: unknown;
+  entries?: unknown;
+}
+
+export interface YtDlpInfo {
+  id: string | null;
+  title: string;
+  uploader: string;
+  uploaderUrl: string | null;
+  thumbnail: string | null;
+  webpageUrl: string | null;
+  durationSeconds: number | null;
+  availableQualities: VideoQuality[] | null;
+}
+
+function pickTitle(entry: YtDlpRawInfo): string {
+  for (const key of ["title", "fulltitle"] as const) {
+    const v = entry[key];
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  const desc = entry.description;
+  if (typeof desc === "string" && desc.trim()) {
+    return desc.trim().split(/\r?\n/)[0]!.slice(0, 120);
+  }
+  return "Video";
+}
+
+function pickUploader(entry: YtDlpRawInfo): string {
+  for (const key of ["uploader", "channel", "creator", "uploader_id"] as const) {
+    const v = entry[key];
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return "Autor desconocido";
+}
+
+function pickThumbnail(entry: YtDlpRawInfo): string | null {
+  if (typeof entry.thumbnail === "string" && entry.thumbnail.trim()) {
+    return entry.thumbnail;
+  }
+  if (Array.isArray(entry.thumbnails)) {
+    const thumbs = entry.thumbnails as Array<{ url?: unknown; width?: unknown }>;
+    let best: { url: string; width: number } | null = null;
+    for (const t of thumbs) {
+      if (typeof t?.url !== "string") continue;
+      const w = typeof t.width === "number" ? t.width : 0;
+      if (!best || w > best.width) best = { url: t.url, width: w };
+    }
+    if (best) return best.url;
+  }
+  return null;
 }
 
 export type YtDlpRunner = ReturnType<typeof createYtDlp>;

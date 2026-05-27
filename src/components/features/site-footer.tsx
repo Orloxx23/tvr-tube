@@ -16,7 +16,7 @@ export function SiteFooter() {
             Privacidad
           </Link>
           <span aria-hidden="true">·</span>
-          <span className="font-mono">v0.1</span>
+          <span className="font-mono">v0.1.1</span>
         </nav>
       </div>
     </footer>

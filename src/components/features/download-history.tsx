@@ -5,7 +5,9 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Clock, FolderOpen, Music2, Trash2, Video, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { PlatformIcon } from "@/components/ui/platform-icon";
 import { useDownloadHistory } from "@/hooks/use-download-history";
+import { getPlatformLabel } from "@/lib/platforms";
 import { formatRelativeTime } from "@/lib/utils";
 import type { DownloadHistoryEntry } from "@/types/video";
 
@@ -80,6 +82,17 @@ export function DownloadHistoryPanel() {
                 <p className="truncate text-sm font-medium">{entry.title}</p>
                 <p className="truncate text-xs text-muted-foreground">{entry.author}</p>
                 <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px]">
+                  {entry.platform ? (
+                    <span className="inline-flex items-center gap-1 text-muted-foreground">
+                      <PlatformIcon platform={entry.platform} size={11} />
+                      {getPlatformLabel(entry.platform)}
+                    </span>
+                  ) : null}
+                  {entry.platform ? (
+                    <span className="text-muted-foreground/70" aria-hidden="true">
+                      ·
+                    </span>
+                  ) : null}
                   <span className="inline-flex items-center gap-1 text-muted-foreground">
                     {entry.options.mode === "video" ? (
                       <Video className="h-3 w-3" aria-hidden="true" />

@@ -4,7 +4,9 @@ import Image from "next/image";
 import { motion } from "framer-motion";
 import { ExternalLink, Play } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { canonicalUrl } from "@/lib/youtube";
+import { PlatformIcon } from "@/components/ui/platform-icon";
+import { getPlatformLabel } from "@/lib/platforms";
+import { cn } from "@/lib/utils";
 import type { VideoMetadata } from "@/types/video";
 
 interface VideoPreviewProps {
@@ -28,6 +30,8 @@ export function VideoPreview({ metadata, loading }: VideoPreviewProps) {
 
   if (!metadata) return null;
 
+  const platformLabel = getPlatformLabel(metadata.platform);
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -36,11 +40,11 @@ export function VideoPreview({ metadata, loading }: VideoPreviewProps) {
       className="flex flex-col gap-4 sm:flex-row sm:items-start"
     >
       <a
-        href={canonicalUrl(metadata.id)}
+        href={metadata.sourceUrl}
         target="_blank"
         rel="noopener noreferrer"
         className="group relative aspect-video w-full shrink-0 overflow-hidden rounded-xl border border-border bg-surface-2 sm:w-64 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        aria-label={`Abrir "${metadata.title}" en YouTube`}
+        aria-label={`Abrir "${metadata.title}" en ${platformLabel}`}
       >
         <Image
           src={metadata.thumbnailUrl}
@@ -57,6 +61,7 @@ export function VideoPreview({ metadata, loading }: VideoPreviewProps) {
         </div>
       </a>
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+        <PlatformChip platform={metadata.platform} label={platformLabel} />
         <h2 className="text-base font-semibold leading-snug tracking-tight text-balance sm:text-lg">
           {metadata.title}
         </h2>
@@ -75,10 +80,26 @@ export function VideoPreview({ metadata, loading }: VideoPreviewProps) {
             metadata.author
           )}
         </p>
-        <p className="mt-1 font-mono text-xs text-muted-foreground">
-          ID: <span className="text-foreground/80">{metadata.id}</span>
-        </p>
       </div>
     </motion.div>
+  );
+}
+
+function PlatformChip({
+  platform,
+  label,
+}: {
+  platform: VideoMetadata["platform"];
+  label: string;
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex w-fit items-center gap-1.5 rounded-full border border-border bg-surface-2 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
+      )}
+    >
+      <PlatformIcon platform={platform} size={12} />
+      {label}
+    </span>
   );
 }

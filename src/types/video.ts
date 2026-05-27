@@ -4,9 +4,12 @@ import type {
   DownloadMode,
   VideoQuality,
 } from "@/lib/constants";
+import type { Platform } from "@/lib/platforms";
 
 export interface VideoMetadata {
   id: string;
+  sourceUrl: string;
+  platform: Platform;
   title: string;
   author: string;
   authorUrl?: string;
@@ -26,6 +29,8 @@ export interface DownloadOptions {
 export interface DownloadHistoryEntry {
   id: string;
   videoId: string;
+  sourceUrl?: string;
+  platform?: Platform;
   title: string;
   author: string;
   thumbnailUrl: string;

@@ -1,4 +1,5 @@
 import type { YtDlpRunner, VideoQuality } from "./ytdlp";
+import { detectPlatform, normalizeUrl, type Platform } from "./platforms";
 
 export class MetadataError extends Error {
   readonly code: string;
@@ -11,66 +12,49 @@ export class MetadataError extends Error {
   }
 }
 
-const YT_ID_REGEX = /^[A-Za-z0-9_-]{11}$/;
-
-export function extractVideoId(input: string): string | null {
-  const cleaned = input.trim();
-  if (!cleaned) return null;
-  if (YT_ID_REGEX.test(cleaned)) return cleaned;
-  try {
-    const url = new URL(cleaned);
-    if (url.hostname === "youtu.be") {
-      const id = url.pathname.replace(/^\//, "").split("/")[0];
-      return id && YT_ID_REGEX.test(id) ? id : null;
-    }
-    if (/(^|\.)youtube\.com$/i.test(url.hostname)) {
-      const v = url.searchParams.get("v");
-      if (v && YT_ID_REGEX.test(v)) return v;
-      const segs = url.pathname.split("/").filter(Boolean);
-      if (
-        (segs[0] === "shorts" || segs[0] === "embed" || segs[0] === "live") &&
-        segs[1] &&
-        YT_ID_REGEX.test(segs[1])
-      ) {
-        return segs[1];
-      }
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-export function canonicalUrl(videoId: string): string {
-  return `https://www.youtube.com/watch?v=${videoId}`;
-}
-
-export function thumbnailUrl(videoId: string): string {
-  return `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`;
-}
-
 export interface VideoMetadata {
   id: string;
+  sourceUrl: string;
+  platform: Platform;
   title: string;
   author: string;
   authorUrl?: string;
   thumbnailUrl: string;
+  durationSeconds?: number;
   providerUrl: string;
   availableQualities?: VideoQuality[];
 }
 
-interface OembedResponse {
-  title: string;
-  author_name: string;
-  author_url?: string;
-  thumbnail_url?: string;
-  provider_url?: string;
+const PLATFORM_PROVIDER_URL: Record<Platform, string> = {
+  youtube: "https://www.youtube.com",
+  instagram: "https://www.instagram.com",
+  tiktok: "https://www.tiktok.com",
+  threads: "https://www.threads.net",
+  facebook: "https://www.facebook.com",
+  pinterest: "https://www.pinterest.com",
+  twitter: "https://x.com",
+  reddit: "https://www.reddit.com",
+  vimeo: "https://vimeo.com",
+  dailymotion: "https://www.dailymotion.com",
+  twitch: "https://www.twitch.tv",
+  generic: "",
+};
+
+function isValidHttpUrl(input: string): boolean {
+  try {
+    const u = new URL(input);
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
-function isOembedResponse(value: unknown): value is OembedResponse {
-  if (typeof value !== "object" || value === null) return false;
-  const v = value as Record<string, unknown>;
-  return typeof v.title === "string" && typeof v.author_name === "string";
+function fallbackThumbnail(platform: Platform, id: string | null): string {
+  if (platform === "youtube" && id && /^[A-Za-z0-9_-]{11}$/.test(id)) {
+    return `https://i.ytimg.com/vi/${id}/maxresdefault.jpg`;
+  }
+  // SVG placeholder transparente — la UI ya tiene fondo neutral.
+  return "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1280' height='720'/>";
 }
 
 export async function fetchVideoMetadata(
@@ -78,79 +62,43 @@ export async function fetchVideoMetadata(
   runner: YtDlpRunner,
   signal?: AbortSignal
 ): Promise<VideoMetadata> {
-  const videoId = extractVideoId(rawUrl);
-  if (!videoId) {
+  const normalized = normalizeUrl(rawUrl);
+  if (!isValidHttpUrl(normalized)) {
     throw new MetadataError(
-      "El enlace no es de YouTube o no contiene un ID de video válido.",
+      "El enlace no parece una URL válida.",
       "invalid_url",
       400
     );
   }
 
-  const watchUrl = canonicalUrl(videoId);
-  const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(
-    watchUrl
-  )}&format=json`;
+  const platform = detectPlatform(normalized);
+  const info = await runner.fetchInfo(normalized, signal);
 
-  let res: Response;
-  try {
-    res = await fetch(oembedUrl, {
-      cache: "no-store",
-      signal: signal ?? AbortSignal.timeout(8000),
-      headers: { "User-Agent": "TVR Tube/0.1" },
-    });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : "Network error";
+  if (!info) {
     throw new MetadataError(
-      `No se pudo contactar a YouTube (${msg}).`,
-      "upstream_unreachable",
+      platform === "generic"
+        ? "No se pudo extraer información de esta URL. Puede no ser soportada o requerir cookies."
+        : "No se pudo extraer información del video. Puede ser privado, requerir login o estar caído.",
+      "fetch_failed",
       502
     );
   }
 
-  if (res.status === 401 || res.status === 403) {
-    throw new MetadataError(
-      "Video privado, restringido por edad, o no embebible.",
-      "restricted",
-      403
-    );
-  }
-  if (res.status === 404 || res.status === 400) {
-    throw new MetadataError(
-      "El video no existe, fue eliminado o el ID es inválido.",
-      "not_found",
-      404
-    );
-  }
-  if (!res.ok) {
-    throw new MetadataError(
-      `YouTube respondió con estado ${res.status}.`,
-      "upstream_error",
-      502
-    );
-  }
-
-  const raw = await res.json().catch(() => null);
-  if (!isOembedResponse(raw)) {
-    throw new MetadataError(
-      "Respuesta inesperada de YouTube.",
-      "parse_error",
-      502
-    );
-  }
-
-  const availableQualities = await runner.probeAvailableQualities(
-    watchUrl,
-    signal
-  );
+  const sourceUrl = info.webpageUrl ?? normalized;
+  const idCandidate = info.id ?? sourceUrl;
 
   return {
-    id: videoId,
-    title: raw.title,
-    author: raw.author_name,
-    authorUrl: raw.author_url,
-    thumbnailUrl: raw.thumbnail_url ?? thumbnailUrl(videoId),
-    providerUrl: raw.provider_url ?? "https://www.youtube.com",
-    ...(availableQualities ? { availableQualities } : {}),
+    id: idCandidate,
+    sourceUrl,
+    platform,
+    title: info.title,
+    author: info.uploader,
+    authorUrl: info.uploaderUrl ?? undefined,
+    thumbnailUrl: info.thumbnail ?? fallbackThumbnail(platform, info.id),
+    durationSeconds: info.durationSeconds ?? undefined,
+    providerUrl: PLATFORM_PROVIDER_URL[platform] || sourceUrl,
+    ...(info.availableQualities
+      ? { availableQualities: info.availableQualities }
+      : {}),
   };
 }

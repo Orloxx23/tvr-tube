@@ -15,15 +15,15 @@ export default function HomePage() {
         <div className="relative mx-auto flex max-w-6xl flex-col items-center px-4 pb-24 pt-16 sm:px-6 sm:pt-24">
           <Badge variant="outline" className="mb-5">
             <span className="h-1.5 w-1.5 rounded-full bg-accent-gradient" aria-hidden="true" />
-            Hasta 2160p · MP3 · M4A
+            YouTube · Instagram · TikTok · Threads · Facebook · Pinterest
           </Badge>
           <h1 className="max-w-3xl text-balance text-center text-4xl font-semibold tracking-tight text-foreground sm:text-5xl md:text-6xl">
-            Descarga videos de YouTube{" "}
+            Descarga videos de cualquier red{" "}
             <span className="text-accent-gradient">sin fricción</span>.
           </h1>
           <p className="mt-4 max-w-xl text-balance text-center text-base text-muted-foreground sm:text-lg">
-            Pegá el enlace, elegí la calidad y obtené el archivo. Resoluciones hasta 4K, audio
-            limpio y procesamiento server-side.
+            Pegá el enlace, elegí la calidad y obtené el archivo. Funciona con +1000 sitios:
+            resoluciones hasta 4K y audio limpio en MP3 o M4A.
           </p>
           <div className="mt-10 w-full">
             <Downloader />

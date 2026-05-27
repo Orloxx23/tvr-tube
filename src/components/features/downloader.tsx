@@ -24,7 +24,7 @@ import { VideoPreview } from "@/components/features/video-preview";
 import { QualitySelector } from "@/components/features/quality-selector";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { useDownloadHistory } from "@/hooks/use-download-history";
-import { canonicalUrl, extractVideoId } from "@/lib/youtube";
+import { isProbablyValidUrl } from "@/lib/platforms";
 import { formatBytes } from "@/lib/utils";
 import {
   DEFAULT_AUDIO_BITRATE,
@@ -40,9 +40,9 @@ import type { VideoMetadata } from "@/types/video";
 const formSchema = z.object({
   url: z
     .string()
-    .min(1, "Pegá un enlace de YouTube")
-    .refine((v) => extractVideoId(v) !== null, {
-      message: "El enlace no parece de YouTube o el ID es inválido",
+    .min(1, "Pegá el enlace del video")
+    .refine((v) => isProbablyValidUrl(v), {
+      message: "El enlace no parece una URL válida",
     }),
 });
 
@@ -193,6 +193,8 @@ export function Downloader() {
     add({
       id: historyId,
       videoId: m.id,
+      sourceUrl: m.sourceUrl,
+      platform: m.platform,
       title: m.title,
       author: m.author,
       thumbnailUrl: m.thumbnailUrl,
@@ -206,13 +208,13 @@ export function Downloader() {
       mode === "video"
         ? {
             mode: "video",
-            url: canonicalUrl(m.id),
+            url: m.sourceUrl,
             quality: effectiveQuality,
             title: m.title,
           }
         : {
             mode: "audio",
-            url: canonicalUrl(m.id),
+            url: m.sourceUrl,
             audioFormat,
             audioBitrate,
             title: m.title,
@@ -267,7 +269,7 @@ export function Downloader() {
     <div className="mx-auto w-full max-w-2xl space-y-6">
       <form onSubmit={onSubmit} noValidate className="space-y-2">
         <Label htmlFor="url" className="sr-only">
-          Enlace de YouTube
+          Enlace del video
         </Label>
         <div className="relative">
           <Link2
@@ -279,7 +281,7 @@ export function Downloader() {
             inputMode="url"
             autoComplete="url"
             spellCheck={false}
-            placeholder="https://www.youtube.com/watch?v=..."
+            placeholder="Pegá un enlace de YouTube, TikTok, Instagram…"
             aria-invalid={!!errors.url}
             aria-describedby={errors.url ? "url-error" : undefined}
             className="h-14 pl-11 pr-36 text-base sm:text-lg"
@@ -321,8 +323,7 @@ export function Downloader() {
           </p>
         ) : (
           <p className="px-1 text-xs text-muted-foreground">
-            Soporta enlaces de <span className="font-mono">youtube.com</span>,{" "}
-            <span className="font-mono">youtu.be</span> y Shorts.
+            Compatible con YouTube, Instagram, TikTok, Threads, Facebook, Pinterest y +1000 sitios.
           </p>
         )}
       </form>
