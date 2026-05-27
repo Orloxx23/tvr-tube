@@ -48,3 +48,19 @@ jobs:
         run: npm run release:linux
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish:
+    name: Promote draft to published release
+    needs: release
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Publish draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release edit "$TAG" \
+            --repo "${{ github.repository }}" \
+            --draft=false \
+            --latest
