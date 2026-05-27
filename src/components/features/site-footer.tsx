@@ -1,4 +1,5 @@
 import Link from "next/link";
+import pkg from "../../../package.json";
 
 export function SiteFooter() {
   return (
@@ -16,7 +17,7 @@ export function SiteFooter() {
             Privacidad
           </Link>
           <span aria-hidden="true">·</span>
-          <span className="font-mono">v0.1.1</span>
+          <span className="font-mono">v{pkg.version}</span>
         </nav>
       </div>
     </footer>

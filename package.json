@@ -1,6 +1,6 @@
 {
   "name": "tvr-tube",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Descargador de videos de YouTube — app de escritorio",
   "author": "TVR Tube",
   "private": true,
@@ -19,6 +19,10 @@
     "dist:win": "npm run build && electron-builder --win",
     "dist:mac": "npm run build && electron-builder --mac",
     "dist:linux": "npm run build && electron-builder --linux",
+    "release": "npm run build && electron-builder --publish always",
+    "release:win": "npm run build && electron-builder --win --publish always",
+    "release:mac": "npm run build && electron-builder --mac --publish always",
+    "release:linux": "npm run build && electron-builder --linux --publish always",
     "lint": "eslint"
   },
   "dependencies": {
@@ -31,6 +35,7 @@
     "@radix-ui/react-tabs": "^1.1.13",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "electron-updater": "^6.8.3",
     "extract-zip": "^2.0.1",
     "ffmpeg-static": "^5.3.0",
     "framer-motion": "^12.38.0",
@@ -76,12 +81,21 @@
     "asarUnpack": [
       "**/node_modules/ffmpeg-static/**"
     ],
-    "publish": null,
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Orloxx23",
+        "repo": "tvr-tube",
+        "releaseType": "release"
+      }
+    ],
     "win": {
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "build/icon.png",
@@ -102,7 +116,10 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["arm64", "x64"]
+          "arch": [
+            "arm64",
+            "x64"
+          ]
         }
       ],
       "icon": "build/icon.png",

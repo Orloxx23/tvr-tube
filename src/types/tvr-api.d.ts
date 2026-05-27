@@ -51,6 +51,21 @@ export type Settings = {
   downloadsDir: string;
 };
 
+export type UpdaterStatus =
+  | { state: "idle" }
+  | { state: "checking" }
+  | { state: "available"; version: string; releaseNotes?: string | null }
+  | { state: "not-available"; version: string }
+  | {
+      state: "downloading";
+      percent: number;
+      transferred: number;
+      total: number;
+      bytesPerSecond: number;
+    }
+  | { state: "downloaded"; version: string; releaseNotes?: string | null }
+  | { state: "error"; message: string };
+
 interface TvrApi {
   getBinariesStatus(): Promise<BinariesStatus>;
   retryBinaries(): Promise<void>;
@@ -65,6 +80,10 @@ interface TvrApi {
   resetSettings(): Promise<Settings>;
   chooseDownloadsDirectory(): Promise<string | null>;
   onSettingsChange(handler: (settings: Settings) => void): () => void;
+  getUpdaterStatus(): Promise<UpdaterStatus>;
+  checkForUpdates(): Promise<void>;
+  quitAndInstallUpdate(): Promise<void>;
+  onUpdaterStatus(handler: (status: UpdaterStatus) => void): () => void;
 }
 
 declare global {

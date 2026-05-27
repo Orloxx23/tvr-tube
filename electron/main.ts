@@ -18,6 +18,12 @@ import {
   setSettings,
   type Settings,
 } from "./settings-store";
+import {
+  checkForUpdates,
+  getUpdaterStatus,
+  initUpdater,
+  quitAndInstall,
+} from "./updater";
 
 const isDev = !app.isPackaged;
 
@@ -127,6 +133,10 @@ function registerIpcHandlers(): void {
   ipcMain.handle("shell:reveal", async (_e, filePath: string) => {
     shell.showItemInFolder(filePath);
   });
+
+  ipcMain.handle("updater:get-status", () => getUpdaterStatus());
+  ipcMain.handle("updater:check", async () => checkForUpdates());
+  ipcMain.handle("updater:quit-and-install", () => quitAndInstall());
 }
 
 async function createWindow(): Promise<void> {
@@ -176,6 +186,12 @@ app.whenReady().then(async () => {
   await getSettings();
   await createWindow();
   void startBinariesBootstrap();
+  initUpdater({ getWindow: () => mainWindow });
+  if (app.isPackaged) {
+    setTimeout(() => {
+      void checkForUpdates();
+    }, 4000);
+  }
 });
 
 app.on("window-all-closed", () => {

@@ -52,6 +52,21 @@ type Settings = {
   downloadsDir: string;
 };
 
+type UpdaterStatus =
+  | { state: "idle" }
+  | { state: "checking" }
+  | { state: "available"; version: string; releaseNotes?: string | null }
+  | { state: "not-available"; version: string }
+  | {
+      state: "downloading";
+      percent: number;
+      transferred: number;
+      total: number;
+      bytesPerSecond: number;
+    }
+  | { state: "downloaded"; version: string; releaseNotes?: string | null }
+  | { state: "error"; message: string };
+
 const api = {
   getBinariesStatus(): Promise<BinariesStatus> {
     return ipcRenderer.invoke("binaries:get-status");
@@ -100,6 +115,21 @@ const api = {
     const listener = (_e: IpcRendererEvent, s: Settings) => handler(s);
     ipcRenderer.on("settings:changed", listener);
     return () => ipcRenderer.off("settings:changed", listener);
+  },
+  getUpdaterStatus(): Promise<UpdaterStatus> {
+    return ipcRenderer.invoke("updater:get-status");
+  },
+  checkForUpdates(): Promise<void> {
+    return ipcRenderer.invoke("updater:check");
+  },
+  quitAndInstallUpdate(): Promise<void> {
+    return ipcRenderer.invoke("updater:quit-and-install");
+  },
+  onUpdaterStatus(handler: (status: UpdaterStatus) => void): () => void {
+    const listener = (_e: IpcRendererEvent, status: UpdaterStatus) =>
+      handler(status);
+    ipcRenderer.on("updater:status", listener);
+    return () => ipcRenderer.off("updater:status", listener);
   },
 };
 

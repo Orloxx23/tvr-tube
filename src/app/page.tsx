@@ -3,6 +3,7 @@ import { SiteFooter } from "@/components/features/site-footer";
 import { Downloader } from "@/components/features/downloader";
 import { DownloadHistoryPanel } from "@/components/features/download-history";
 import { BinariesGate } from "@/components/features/binaries-gate";
+import { UpdateNotifier } from "@/components/features/update-notifier";
 import { Badge } from "@/components/ui/badge";
 
 export default function HomePage() {
@@ -44,6 +45,7 @@ export default function HomePage() {
         </section>
       </main>
       <SiteFooter />
+      <UpdateNotifier />
     </BinariesGate>
   );
 }
