@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Download, Loader2, RefreshCcw, X } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import { Download, RefreshCcw, TriangleAlert, Wifi } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { ProgressBar } from "@/components/ui/progress-bar";
-import { formatBytes } from "@/lib/utils";
 import type { BinariesStatus } from "@/types/tvr-api";
 
 type Props = {
@@ -20,30 +19,25 @@ export function BinariesGate({ children }: Props) {
   const [handshakeTimedOut, setHandshakeTimedOut] = useState(false);
 
   useEffect(() => {
-    console.log("[BinariesGate] mount, checking window.tvr");
     const api = typeof window !== "undefined" ? window.tvr : undefined;
     if (!api) {
-      console.warn("[BinariesGate] no window.tvr");
       setHasBridge(false);
       return;
     }
     setHasBridge(true);
 
     const timer = window.setTimeout(() => {
-      console.warn("[BinariesGate] handshake timeout (no status received)");
       setHandshakeTimedOut(true);
     }, HANDSHAKE_TIMEOUT_MS);
 
     void api
       .getBinariesStatus()
       .then((s) => {
-        console.log("[BinariesGate] initial status:", s);
         window.clearTimeout(timer);
         setHandshakeTimedOut(false);
         setStatus(s);
       })
       .catch((err) => {
-        console.error("[BinariesGate] getBinariesStatus failed:", err);
         window.clearTimeout(timer);
         setStatus({
           state: "error",
@@ -54,32 +48,30 @@ export function BinariesGate({ children }: Props) {
         });
       });
     const unsubscribe = api.onBinariesStatus((s) => {
-      console.log("[BinariesGate] broadcast status:", s);
       window.clearTimeout(timer);
       setHandshakeTimedOut(false);
       setStatus(s);
     });
     return () => {
-      console.log("[BinariesGate] cleanup");
       window.clearTimeout(timer);
       unsubscribe();
     };
   }, []);
-
-  console.log("[BinariesGate] render", { status, hasBridge, handshakeTimedOut });
 
   const isReady = status?.state === "ready";
 
   return (
     <>
       {children}
-      {!isReady ? (
-        <BinariesOverlay
-          status={status}
-          hasBridge={hasBridge}
-          handshakeTimedOut={handshakeTimedOut}
-        />
-      ) : null}
+      <AnimatePresence>
+        {!isReady ? (
+          <BinariesOverlay
+            status={status}
+            hasBridge={hasBridge}
+            handshakeTimedOut={handshakeTimedOut}
+          />
+        ) : null}
+      </AnimatePresence>
     </>
   );
 }
@@ -94,23 +86,25 @@ function BinariesOverlay({
   handshakeTimedOut: boolean;
 }) {
   return (
-    <div
+    <motion.div
       role="dialog"
       aria-modal="true"
       aria-labelledby="binaries-gate-title"
-      className="fixed inset-0 z-50 grid place-items-center bg-background/80 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-50 grid place-items-center overflow-hidden bg-background p-6"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.4 }}
     >
-      <Card className="w-full max-w-md">
-        <CardContent className="space-y-4 p-6">
-          {renderBody(status, hasBridge, handshakeTimedOut)}
-          <DebugFooter
-            status={status}
-            hasBridge={hasBridge}
-            handshakeTimedOut={handshakeTimedOut}
-          />
-        </CardContent>
-      </Card>
-    </div>
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute left-1/2 top-1/2 h-120 w-120 -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent-gradient opacity-[0.12] blur-[120px]"
+      />
+      <div className="relative w-full max-w-sm text-center">
+        <BrandMark pulse={hasBridge !== false} />
+        {renderBody(status, hasBridge, handshakeTimedOut)}
+      </div>
+    </motion.div>
   );
 }
 
@@ -124,13 +118,12 @@ function renderBody(
   }
   if (!status) {
     if (handshakeTimedOut) {
-      return <HandshakeTimeout />;
+      return <SlowStart />;
     }
     return (
       <Pending
-        icon={<Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />}
-        title="Preparando TVR Tube"
-        description="Conectando con el proceso principal…"
+        title="Preparando tu espacio"
+        description="Estamos dejando todo listo para que empieces a descargar. Tardará solo un momento."
       />
     );
   }
@@ -139,38 +132,29 @@ function renderBody(
     case "checking":
       return (
         <Pending
-          icon={<Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />}
-          title="Preparando TVR Tube"
-          description="Comprobando que tengas todo lo necesario para descargar videos."
+          title="Preparando tu espacio"
+          description="Estamos dejando todo listo para que empieces a descargar. Tardará solo un momento."
         />
       );
-    case "downloading": {
-      const total = status.totalBytes;
+    case "downloading":
       return (
-        <div className="space-y-3">
-          <div className="flex items-center gap-2">
-            <Download className="h-5 w-5 text-accent" aria-hidden="true" />
-            <h2 id="binaries-gate-title" className="text-base font-semibold">
-              Descargando yt-dlp
-            </h2>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Esto pasa una sola vez. El binario queda guardado en tu equipo.
-          </p>
+        <Body
+          title="Casi listo"
+          description="Terminando de configurar la app por primera vez. Esto pasa una sola vez."
+        >
           <ProgressBar
             percent={status.percent}
-            label={`${formatBytes(status.receivedBytes)}${total ? ` / ${formatBytes(total)}` : ""}`}
-            indeterminate={total === null}
+            label="Descargando lo necesario"
+            indeterminate={status.totalBytes === null}
+            className="mt-2 text-left"
           />
-        </div>
+        </Body>
       );
-    }
     case "verifying":
       return (
         <Pending
-          icon={<Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />}
-          title="Verificando binario"
-          description="Comprobando que yt-dlp ande correctamente…"
+          title="Ya casi estamos"
+          description="Dando los últimos toques antes de empezar."
         />
       );
     case "error":
@@ -180,24 +164,85 @@ function renderBody(
   }
 }
 
+function BrandMark({ pulse }: { pulse: boolean }) {
+  return (
+    <div className="relative mx-auto mb-8 grid h-20 w-20 place-items-center">
+      {pulse ? (
+        <motion.span
+          aria-hidden="true"
+          className="absolute inset-0 rounded-3xl bg-accent-gradient blur-xl"
+          animate={{ opacity: [0.35, 0.75, 0.35], scale: [0.9, 1.08, 0.9] }}
+          transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+        />
+      ) : null}
+      <span
+        className="relative grid h-16 w-16 place-items-center rounded-3xl bg-accent-gradient text-white shadow-lg shadow-accent-from/30"
+        aria-hidden="true"
+      >
+        <Download className="h-7 w-7" strokeWidth={2.5} />
+      </span>
+    </div>
+  );
+}
+
+function Body({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-3">
+      <h2
+        id="binaries-gate-title"
+        className="text-xl font-semibold tracking-tight text-foreground"
+      >
+        {title}
+      </h2>
+      <p className="mx-auto max-w-xs text-sm leading-relaxed text-muted-foreground">
+        {description}
+      </p>
+      {children}
+    </div>
+  );
+}
+
 function Pending({
-  icon,
   title,
   description,
 }: {
-  icon: React.ReactNode;
   title: string;
   description: string;
 }) {
   return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2 text-foreground">
-        {icon}
-        <h2 id="binaries-gate-title" className="text-base font-semibold">
-          {title}
-        </h2>
-      </div>
-      <p className="text-sm text-muted-foreground">{description}</p>
+    <Body title={title} description={description}>
+      <LoadingDots />
+    </Body>
+  );
+}
+
+function LoadingDots() {
+  return (
+    <div
+      className="flex items-center justify-center gap-1.5 pt-2"
+      aria-hidden="true"
+    >
+      {[0, 1, 2].map((i) => (
+        <motion.span
+          key={i}
+          className="h-2 w-2 rounded-full bg-accent-gradient"
+          animate={{ opacity: [0.3, 1, 0.3], y: [0, -3, 0] }}
+          transition={{
+            duration: 1,
+            repeat: Infinity,
+            ease: "easeInOut",
+            delay: i * 0.18,
+          }}
+        />
+      ))}
     </div>
   );
 }
@@ -207,15 +252,22 @@ function ErrorState({ message }: { message: string }) {
     void window.tvr?.retryBinaries();
   };
   return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2 text-destructive">
-        <X className="h-5 w-5" aria-hidden="true" />
-        <h2 id="binaries-gate-title" className="text-base font-semibold">
-          No se pudo preparar la app
-        </h2>
+    <div className="space-y-4">
+      <div className="mx-auto grid h-11 w-11 place-items-center rounded-full bg-destructive/12">
+        <TriangleAlert className="h-5 w-5 text-destructive" aria-hidden="true" />
       </div>
-      <p className="text-sm text-muted-foreground">{message}</p>
-      <Button type="button" size="sm" onClick={onRetry}>
+      <div className="space-y-2">
+        <h2
+          id="binaries-gate-title"
+          className="text-xl font-semibold tracking-tight text-foreground"
+        >
+          No pudimos preparar la app
+        </h2>
+        <p className="mx-auto max-w-xs text-sm leading-relaxed text-muted-foreground">
+          {message}
+        </p>
+      </div>
+      <Button type="button" onClick={onRetry}>
         <RefreshCcw className="h-4 w-4" aria-hidden="true" />
         Reintentar
       </Button>
@@ -223,58 +275,49 @@ function ErrorState({ message }: { message: string }) {
   );
 }
 
-function HandshakeTimeout() {
+function SlowStart() {
   const onRetry = () => {
     void window.tvr?.retryBinaries();
     window.location.reload();
   };
   return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2 text-foreground">
-        <X className="h-5 w-5 text-destructive" aria-hidden="true" />
-        <h2 id="binaries-gate-title" className="text-base font-semibold">
-          No llegó respuesta del proceso principal
-        </h2>
-      </div>
-      <p className="text-sm text-muted-foreground">
-        El bridge IPC está expuesto pero <code>binaries:get-status</code> no
-        contestó en {Math.floor(HANDSHAKE_TIMEOUT_MS / 1000)}s. Revisá la
-        terminal de Electron por errores en <code>ensureBinaries</code>.
+    <div className="space-y-4">
+      <h2
+        id="binaries-gate-title"
+        className="text-xl font-semibold tracking-tight text-foreground"
+      >
+        Esto está tardando más de lo normal
+      </h2>
+      <p className="mx-auto max-w-xs text-sm leading-relaxed text-muted-foreground">
+        No pudimos terminar de iniciar la app. Probá reintentar; si sigue igual,
+        cerrala y volvé a abrirla.
       </p>
-      <Button type="button" size="sm" onClick={onRetry}>
+      <Button type="button" onClick={onRetry}>
         <RefreshCcw className="h-4 w-4" aria-hidden="true" />
-        Reintentar y recargar
+        Reintentar
       </Button>
     </div>
   );
 }
 
-function DebugFooter({
-  status,
-  hasBridge,
-  handshakeTimedOut,
-}: {
-  status: BinariesStatus | null;
-  hasBridge: boolean | null;
-  handshakeTimedOut: boolean;
-}) {
-  return (
-    <pre className="mt-2 max-h-32 overflow-auto rounded-md border border-border/40 bg-muted/30 p-2 text-[10px] leading-tight text-muted-foreground">
-      {JSON.stringify({ hasBridge, handshakeTimedOut, status }, null, 2)}
-    </pre>
-  );
-}
-
 function NoBridgeMessage() {
   return (
-    <div className="space-y-3">
-      <h2 id="binaries-gate-title" className="text-base font-semibold">
-        Esta app debe correr en Electron
-      </h2>
-      <p className="text-sm text-muted-foreground">
-        No hay bridge IPC disponible. Si abriste el HTML directo en un browser,
-        cerralo y abrí la app de escritorio en su lugar.
-      </p>
+    <div className="space-y-4">
+      <div className="mx-auto grid h-11 w-11 place-items-center rounded-full bg-muted">
+        <Wifi className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
+      </div>
+      <div className="space-y-2">
+        <h2
+          id="binaries-gate-title"
+          className="text-xl font-semibold tracking-tight text-foreground"
+        >
+          Abrí la app de escritorio
+        </h2>
+        <p className="mx-auto max-w-xs text-sm leading-relaxed text-muted-foreground">
+          Parece que estás viendo esto en un navegador. Cerrá esta ventana y abrí
+          TVR Tube desde la app instalada en tu equipo.
+        </p>
+      </div>
     </div>
   );
 }
