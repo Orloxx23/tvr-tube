@@ -408,16 +408,12 @@ export function createYtDlp(config: YtDlpConfig) {
     url: string,
     signal?: AbortSignal
   ): Promise<YtDlpInfo | null> {
-    let stdout: string;
-    try {
-      const result = await runYtDlp(
-        ["-J", "--no-warnings", "--no-playlist", "--skip-download", url],
-        { signal }
-      );
-      stdout = result.stdout;
-    } catch {
-      return null;
-    }
+    // Deja propagar YtDlpError: el mensaje clasificado (cookies, privado,
+    // rate-limit, etc.) tiene que llegar hasta la UI en lugar de un genérico.
+    const { stdout } = await runYtDlp(
+      ["-J", "--no-warnings", "--no-playlist", "--skip-download", url],
+      { signal }
+    );
     let parsed: YtDlpRawInfo;
     try {
       parsed = JSON.parse(stdout) as YtDlpRawInfo;

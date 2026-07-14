@@ -1,4 +1,4 @@
-import type { YtDlpRunner, VideoQuality } from "./ytdlp";
+import { YtDlpError, type YtDlpInfo, type YtDlpRunner, type VideoQuality } from "./ytdlp";
 import { detectPlatform, normalizeUrl, type Platform } from "./platforms";
 
 export class MetadataError extends Error {
@@ -72,7 +72,15 @@ export async function fetchVideoMetadata(
   }
 
   const platform = detectPlatform(normalized);
-  const info = await runner.fetchInfo(normalized, signal);
+  let info: YtDlpInfo | null;
+  try {
+    info = await runner.fetchInfo(normalized, signal);
+  } catch (err) {
+    if (err instanceof YtDlpError) {
+      throw new MetadataError(err.message, err.code, 502);
+    }
+    throw err;
+  }
 
   if (!info) {
     throw new MetadataError(

@@ -75,6 +75,24 @@ async function runVersionCheck(binaryPath: string): Promise<boolean> {
   });
 }
 
+const YTDLP_SELF_UPDATE_TIMEOUT_MS = 180_000;
+
+// Los extractores de Instagram/X/Facebook se rompen con frecuencia; un binario
+// de meses atrás falla aunque siga respondiendo a --version. Best-effort: si no
+// hay red o el update falla, seguimos con el binario actual.
+function selfUpdateYtDlp(binaryPath: string): Promise<void> {
+  return new Promise((resolve) => {
+    const child = spawn(binaryPath, ["-U"], { windowsHide: true });
+    const timer = setTimeout(() => child.kill(), YTDLP_SELF_UPDATE_TIMEOUT_MS);
+    const finish = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    child.on("error", finish);
+    child.on("close", finish);
+  });
+}
+
 function fetchText(url: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const request = net.request({ url, redirect: "follow" });
@@ -194,8 +212,11 @@ export async function ensureBinaries({
   if (ytdlpSize > 1_000_000) {
     onStatus({ state: "verifying", bin: "yt-dlp" });
     if (await runVersionCheck(ytdlpPath)) {
-      onStatus({ state: "ready", ytdlpPath, ffmpegPath });
-      return { ytdlpPath, ffmpegPath };
+      await selfUpdateYtDlp(ytdlpPath);
+      if (await runVersionCheck(ytdlpPath)) {
+        onStatus({ state: "ready", ytdlpPath, ffmpegPath });
+        return { ytdlpPath, ffmpegPath };
+      }
     }
     await unlink(ytdlpPath).catch(() => undefined);
   }
