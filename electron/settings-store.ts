@@ -3,8 +3,22 @@ import { readFile, writeFile, mkdir, rename } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 
+export const COOKIES_BROWSERS = [
+  "none",
+  "chrome",
+  "edge",
+  "firefox",
+  "brave",
+  "opera",
+  "vivaldi",
+  "chromium",
+] as const;
+
+export type CookiesBrowser = (typeof COOKIES_BROWSERS)[number];
+
 export const SettingsSchema = z.object({
   downloadsDir: z.string().min(1),
+  cookiesBrowser: z.enum(COOKIES_BROWSERS).default("none"),
 });
 
 export type Settings = z.infer<typeof SettingsSchema>;
@@ -12,6 +26,7 @@ export type Settings = z.infer<typeof SettingsSchema>;
 function defaults(): Settings {
   return {
     downloadsDir: path.join(app.getPath("downloads"), "TVR Tube"),
+    cookiesBrowser: "none",
   };
 }
 

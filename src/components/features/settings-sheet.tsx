@@ -23,7 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import type { Settings } from "@/types/tvr-api";
+import type { CookiesBrowser, Settings } from "@/types/tvr-api";
 
 type Props = {
   open: boolean;
@@ -62,6 +62,27 @@ export function SettingsSheet({ open, onOpenChange }: Props) {
     }
   }, []);
 
+  const onCookiesBrowserChange = useCallback(async (value: CookiesBrowser) => {
+    const api = window.tvr;
+    if (!api) return;
+    setBusy(true);
+    try {
+      const next = await api.setSettings({ cookiesBrowser: value });
+      setSettings(next);
+      toast.success(
+        value === "none"
+          ? "Se desactivó el uso de cookies"
+          : "Cookies del navegador activadas"
+      );
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "No se pudo cambiar la opción."
+      );
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
   const onReset = useCallback(async () => {
     const api = window.tvr;
     if (!api) return;
@@ -85,7 +106,8 @@ export function SettingsSheet({ open, onOpenChange }: Props) {
         <DialogHeader>
           <DialogTitle>Ajustes</DialogTitle>
           <DialogDescription>
-            Configurá la carpeta de descargas y la apariencia de la app.
+            Configurá la carpeta de descargas, el acceso a contenido con login y
+            la apariencia de la app.
           </DialogDescription>
         </DialogHeader>
 
@@ -94,6 +116,12 @@ export function SettingsSheet({ open, onOpenChange }: Props) {
             value={settings?.downloadsDir ?? ""}
             busy={busy}
             onPick={onPickDirectory}
+          />
+          <Separator />
+          <CookiesSection
+            value={settings?.cookiesBrowser ?? "none"}
+            busy={busy}
+            onChange={onCookiesBrowserChange}
           />
           <Separator />
           <ThemeSection />
@@ -162,6 +190,63 @@ function DownloadsSection({
           Elegir…
         </Button>
       </div>
+    </section>
+  );
+}
+
+const COOKIES_BROWSER_OPTIONS: { value: CookiesBrowser; label: string }[] = [
+  { value: "none", label: "Sin cookies (solo contenido público)" },
+  { value: "firefox", label: "Firefox" },
+  { value: "chrome", label: "Chrome" },
+  { value: "edge", label: "Edge" },
+  { value: "brave", label: "Brave" },
+  { value: "opera", label: "Opera" },
+  { value: "vivaldi", label: "Vivaldi" },
+  { value: "chromium", label: "Chromium" },
+];
+
+function CookiesSection({
+  value,
+  busy,
+  onChange,
+}: {
+  value: CookiesBrowser;
+  busy: boolean;
+  onChange: (value: CookiesBrowser) => void;
+}) {
+  return (
+    <section className="space-y-3">
+      <div className="space-y-1">
+        <h3 className="text-sm font-semibold">Contenido con inicio de sesión</h3>
+        <p className="text-xs text-muted-foreground">
+          Para videos privados o restringidos de X, Instagram o Facebook, elegí
+          el navegador donde ya tengas iniciada sesión. La app usa esas cookies
+          para acceder al contenido. Iniciá sesión en la plataforma desde ese
+          navegador antes de descargar.
+        </p>
+      </div>
+      <Select
+        value={value}
+        onValueChange={(v) => onChange(v as CookiesBrowser)}
+        disabled={busy}
+      >
+        <SelectTrigger className="sm:max-w-xs">
+          <SelectValue placeholder="Navegador" />
+        </SelectTrigger>
+        <SelectContent>
+          {COOKIES_BROWSER_OPTIONS.map((opt) => (
+            <SelectItem key={opt.value} value={opt.value}>
+              {opt.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {value === "chrome" || value === "edge" ? (
+        <p className="text-xs text-amber-600 dark:text-amber-500">
+          En Windows, Chrome y Edge pueden bloquear la lectura de cookies. Si
+          falla, cerrá el navegador por completo y reintentá, o usá Firefox.
+        </p>
+      ) : null}
     </section>
   );
 }

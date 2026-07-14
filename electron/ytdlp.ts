@@ -46,6 +46,7 @@ export interface YtDlpConfig {
   ytdlpPath: string;
   ffmpegPath: string;
   cookiesPath?: string;
+  cookiesFromBrowser?: string;
   extractorArgs?: string;
 }
 
@@ -83,6 +84,27 @@ function classifyError(stderr: string): { code: string; message: string } {
       code: "youtube_bot_check",
       message:
         "YouTube exige autenticación desde esta IP. Configurá un cookies.txt en Ajustes.",
+    };
+  }
+  if (/Failed to decrypt with DPAPI|Could not copy .* cookie database|unable to open database file|Permission denied.*[Cc]ookies/i.test(stderr)) {
+    return {
+      code: "cookies_locked",
+      message:
+        "No se pudieron leer las cookies del navegador (suele pasar con Chrome/Edge en Windows). Cerrá el navegador por completo y reintentá, o elegí Firefox en Ajustes.",
+    };
+  }
+  if (/could not find .* cookies database|does not support .* cookies|not find .* in.*User Data/i.test(stderr)) {
+    return {
+      code: "cookies_browser_missing",
+      message:
+        "No se encontró ese navegador o no tiene sesión guardada. Verificá el navegador elegido en Ajustes e iniciá sesión en la plataforma.",
+    };
+  }
+  if (/No video could be found in this tweet/i.test(stderr)) {
+    return {
+      code: "twitter_no_video",
+      message:
+        "X no muestra el video sin sesión (contenido sensible, restringido o borrado). En Ajustes elegí el navegador donde tengas iniciada sesión en X y reintentá.",
     };
   }
   if (/login required|requires (?:a )?login|empty media response|Restricted Video/i.test(stderr)) {
@@ -240,6 +262,8 @@ async function findProducedFile(
 export function createYtDlp(config: YtDlpConfig) {
   const commonArgs: string[] = [];
   if (config.cookiesPath) commonArgs.push("--cookies", config.cookiesPath);
+  if (config.cookiesFromBrowser)
+    commonArgs.push("--cookies-from-browser", config.cookiesFromBrowser);
   if (config.extractorArgs)
     commonArgs.push("--extractor-args", config.extractorArgs);
 

@@ -48,8 +48,19 @@ type BinariesStatus =
   | { state: "ready"; ytdlpPath: string; ffmpegPath: string }
   | { state: "error"; message: string };
 
+type CookiesBrowser =
+  | "none"
+  | "chrome"
+  | "edge"
+  | "firefox"
+  | "brave"
+  | "opera"
+  | "vivaldi"
+  | "chromium";
+
 type Settings = {
   downloadsDir: string;
+  cookiesBrowser: CookiesBrowser;
 };
 
 type UpdaterStatus =

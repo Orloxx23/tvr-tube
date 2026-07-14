@@ -47,8 +47,19 @@ export type BinariesStatus =
   | { state: "ready"; ytdlpPath: string; ffmpegPath: string }
   | { state: "error"; message: string };
 
+export type CookiesBrowser =
+  | "none"
+  | "chrome"
+  | "edge"
+  | "firefox"
+  | "brave"
+  | "opera"
+  | "vivaldi"
+  | "chromium";
+
 export type Settings = {
   downloadsDir: string;
+  cookiesBrowser: CookiesBrowser;
 };
 
 export type UpdaterStatus =

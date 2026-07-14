@@ -35,6 +35,7 @@ let mainWindow: BrowserWindow | null = null;
 let lastBinariesStatus: BinariesStatus = { state: "checking" };
 let runner: YtDlpRunner | null = null;
 let downloadService: DownloadService | null = null;
+let binaryPaths: { ytdlpPath: string; ffmpegPath: string } | null = null;
 
 function broadcastBinariesStatus(status: BinariesStatus): void {
   lastBinariesStatus = status;
@@ -45,11 +46,19 @@ function emitDownloadProgress(event: DownloadProgressEvent): void {
   mainWindow?.webContents.send("download:progress", event);
 }
 
-function buildRuntimeServices(ytdlpPath: string, ffmpegPath: string): void {
+async function buildRuntimeServices(
+  ytdlpPath: string,
+  ffmpegPath: string
+): Promise<void> {
+  binaryPaths = { ytdlpPath, ffmpegPath };
+  const cookiesBrowser = (await getSettings()).cookiesBrowser;
+  activeCookiesBrowser = cookiesBrowser;
   runner = createYtDlp({
     ytdlpPath,
     ffmpegPath,
     cookiesPath: process.env.YT_DLP_COOKIES_PATH || undefined,
+    cookiesFromBrowser:
+      cookiesBrowser && cookiesBrowser !== "none" ? cookiesBrowser : undefined,
     extractorArgs: process.env.YT_DLP_EXTRACTOR_ARGS || undefined,
   });
   downloadService = new DownloadService(
@@ -59,8 +68,15 @@ function buildRuntimeServices(ytdlpPath: string, ffmpegPath: string): void {
   );
 }
 
+let activeCookiesBrowser: Settings["cookiesBrowser"] | null = null;
+
 function broadcastSettings(settings: Settings): void {
   mainWindow?.webContents.send("settings:changed", settings);
+  // El navegador de cookies está horneado en el runner; si cambió, reconstruilo.
+  // buildRuntimeServices vuelve a leer el setting y actualiza activeCookiesBrowser.
+  if (binaryPaths && settings.cookiesBrowser !== activeCookiesBrowser) {
+    void buildRuntimeServices(binaryPaths.ytdlpPath, binaryPaths.ffmpegPath);
+  }
 }
 
 async function startBinariesBootstrap(): Promise<void> {
@@ -68,7 +84,7 @@ async function startBinariesBootstrap(): Promise<void> {
     const { ytdlpPath, ffmpegPath } = await ensureBinaries({
       onStatus: broadcastBinariesStatus,
     });
-    buildRuntimeServices(ytdlpPath, ffmpegPath);
+    await buildRuntimeServices(ytdlpPath, ffmpegPath);
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Error desconocido al preparar binarios.";
